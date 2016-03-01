@@ -7,6 +7,6 @@ cat: cat.c
 
 
 clean:
-	rm cat 
+	rm -f cat 
 
 

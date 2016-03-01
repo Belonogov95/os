@@ -8,5 +8,5 @@ hello_world: hello_world.c
 
 
 clean:
-	rm hello_world
+	rm -f hello_world
 
