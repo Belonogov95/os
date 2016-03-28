@@ -1,4 +1,42 @@
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+tests/
 *.swp
-
-
+*.swo
+*.in
+*.out
+HW1/bin/*
+HW2/bin/*
+HW3/bin/*
+HW4/bin/*
+HW5/bin/*
+HW6/bin/*
+*.swp
 
