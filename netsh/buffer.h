@@ -8,7 +8,7 @@ struct Buffer {
     deque < char > deq;
     int cap;
     int readFD, writeFD;
-    Buffer(int cap);
+    Buffer(int cap, int readFD, int writeFD);
     void bufRead();
     void bufWrite();
 };

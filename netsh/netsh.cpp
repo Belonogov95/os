@@ -58,6 +58,18 @@ void addInEpoll(int epfd, int sfd) {
     epoll_ctl(epfd, EPOLL_CTL_ADD, sfd, & event);
 }
 
+map < int, shared_ptr < Buffer > > q1;
+
+vector < string > split(string s, char ch) {
+    vector < string > res;
+    for (int i = 0; i < (int)s.size(); i++) {
+        int j = i;
+        for (; i < (int)s.size() && s[i] != ch; i++);
+        res.pb(s.substr(j, i - j));
+    }
+    return res;
+}
+
 int main(int argc, char * argv[]){
     int port;
     if (argc != 2) printError("Usage: ./netsh port");
@@ -88,21 +100,22 @@ int main(int argc, char * argv[]){
             socklen_t sz = sizeof(client);
             int nfd = accept(sfd, (struct sockaddr*)&client, &sz);
 
-            //db("before");
-            //db("after");
-            if (nfd == -1) printError("accept");
-
-            printf("accept = %d\n", fd);
-            printf("from %s:%d\n", inet_ntoa(client.sin_addr), ntohs(client.sin_port));
-
-            char buffer[100];
-
-            int len = read(fd, buffer, 100); 
-            db(len);
-            buffer[len] = 0;
-            fprintf(stderr, "%s", buffer);
-            return fd;
-
+            addInEpoll(epfd, nfd);
+            q1[nfd] = shared_ptr < Buffer > (new Buffer(CAP, nfd, -1));
+        }
+        else if (q1.count(fd) == 1) {
+            auto buf = q1[fd];
+            buf->bufRead();
+            bool flag = 0;
+            for (auto x: buf->deq) 
+                flag |= x == '\n';
+            if (flag) {
+                string s(buf->deq.begin(), buf->deq.end());
+                auto r1 = split(s, '\n');
+                auto r2 = split(r1[0], '|');
+            }
+        }
+        else if (q2.count(fd)) {
 
         }
     }
@@ -115,4 +128,21 @@ int main(int argc, char * argv[]){
 
     return 0;
 }
+
+
+
+ 
+            //if (nfd == -1) printError("accept");
+
+            //printf("accept = %d\n", fd);
+            //printf("from %s:%d\n", inet_ntoa(client.sin_addr), ntohs(client.sin_port));
+
+            //char buffer[100];
+
+            //int len = read(fd, buffer, 100); 
+            //db(len);
+            //buffer[len] = 0;
+            //fprintf(stderr, "%s", buffer);
+            //return fd;
+
 

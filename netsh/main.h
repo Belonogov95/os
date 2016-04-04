@@ -27,6 +27,7 @@
 #include <arpa/inet.h>
 #include <stdio.h>
 #include <fcntl.h>
+#include <memory>
 
 
 using namespace std;
@@ -40,6 +41,8 @@ using namespace std;
 #define db2(x, y) cerr << "(" << #x << ", " << #y << ") = (" << x << ", " << y << ")\n"; 
 #define all(a) (a).begin(), (a).end()
 #define LISTEN_BACKLOG 50
+
+const int CAP = (1 << 10);
 
 void printError(string s);
 

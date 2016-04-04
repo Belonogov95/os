@@ -1,9 +1,6 @@
 #include "buffer.h"
 
-
-
-Buffer::Buffer(int cap):cap(cap), readFD(-1), writeFD(-1) { }
-
+Buffer::Buffer(int cap, int readFD, int writeFD):cap(cap), readFD(readFD), writeFD(writeFD) { }
 
 void Buffer::bufRead() {
     assert(readFD != -1);
@@ -17,7 +14,6 @@ void Buffer::bufRead() {
         if (writeFD != -1 && len > 0) bufWrite();
     }
 }
-
 
 void Buffer::bufWrite() {
     assert(writeFD != -1);
