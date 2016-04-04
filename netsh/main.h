@@ -31,6 +31,7 @@
 #include <stdio.h>
 #include <fcntl.h>
 #include <memory>
+#include <signal.h>
 
 
 using namespace std;

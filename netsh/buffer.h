@@ -13,6 +13,7 @@ struct Buffer {
     Buffer(int cap, int readFD, int writeFD, int epfd);
     void bufRead();
     void bufWrite();
+    void unSubscribe();
 };
 
 
