@@ -1,10 +1,10 @@
 
 
-
 all: netsh
 
+netsh: netsh.cpp buffer.cpp main.h buffer.h
+	g++ -std=c++11 -o netsh netsh.cpp buffer.cpp  #-D_GLIBCXX_DEBUG -fsanitize=address
 
-netsh: netsh.cpp
-	g++ -o netsh netsh.cpp -std=c++11 -D_GLIBCXX_DEBUG -fsanitize=address
 
-
+clean:
+	rm netsh 

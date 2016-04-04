@@ -1,3 +1,6 @@
+#ifndef MAIN_H
+#define MAIN_H
+
 #include <iostream>
 #include <cmath>
 #include <vector>
@@ -48,5 +51,6 @@ void printError(string s);
 
 
 
+#endif
 
 
