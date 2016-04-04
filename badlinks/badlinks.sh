@@ -1,5 +1,4 @@
 
-
 go() {
     for s in `ls $1`
     do
@@ -12,7 +11,6 @@ go() {
             then
                 realPath=$(readlink $path)
                 if ! test -e $realPath
-                then
                     #echo slink not exist $path
                     tmr=$(stat --format "%Y" $path)
                     curTime=$(date +"%s")
