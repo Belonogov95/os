@@ -10,7 +10,8 @@ struct Buffer {
     int readFD, writeFD;
     int epfd;
     bool inEpollR, inEpollW;
-    Buffer(int cap, int readFD, int writeFD, int epfd);
+    int tid;
+    Buffer(int cap, int readFD, int writeFD, int epfd, int tid);
     void bufRead();
     void bufWrite();
     void unSubscribe();

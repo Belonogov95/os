@@ -1,7 +1,7 @@
 #include "buffer.h"
 #include "netsh.h"
 
-Buffer::Buffer(int cap, int readFD, int writeFD, int epfd):cap(cap), readFD(readFD), writeFD(writeFD), epfd(epfd) {
+Buffer::Buffer(int cap, int readFD, int writeFD, int epfd, int tid):cap(cap), readFD(readFD), writeFD(writeFD), epfd(epfd), tid(tid) {
     inEpollR = readFD != -1;
     inEpollW = writeFD != -1;
 }
@@ -41,7 +41,7 @@ void Buffer::bufRead() {
 }
 
 void Buffer::bufWrite() {
-    db("bufWrite");
+    //db("bufWrite");
     assert(writeFD != -1);
     db(deq.size());
     if (!deq.empty()) {
@@ -54,7 +54,7 @@ void Buffer::bufWrite() {
             deq.pop_front();
         
         if (!deq.empty() && inEpollW == 0) {
-            db("+++++sub");
+            //db("+++++sub");
             modEpoll(epfd, writeFD, EPOLLOUT, EPOLLOUT); 
             inEpollW = 1;
         }
@@ -62,12 +62,12 @@ void Buffer::bufWrite() {
     }
     else {
         if (inEpollW) {
-            db("-----unsub");
+            //db("-----unsub");
             modEpoll(epfd, writeFD, EPOLLOUT, 0); 
             inEpollW = 0;
         }
     }
-    db("endBufWriter");
+    //db("endBufWriter");
 }
 
 //void Buffer::unSubscribe() {

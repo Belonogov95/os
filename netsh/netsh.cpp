@@ -1,6 +1,14 @@
 #include "main.h"
 #include "buffer.h"
 
+map < int, string > fdMean;
+
+
+string getFdMean(int fd) {
+    if (fdMean.count(fd) == 0) return "null";
+    return fdMean[fd];
+}
+
 void printError(string s) {
     perror(s.data());
     exit(0);
@@ -19,7 +27,7 @@ void createDemon() {
 }
 
 void printPid() {
-    FILE * f = fopen("tmp/netsh.pid", "w");        
+    FILE * f = fopen("/tmp/netsh.pid", "w");        
     fprintf(f, "%d\n", getpid());
     fclose(f);
 }
@@ -58,25 +66,27 @@ void addEpoll(int epfd, int sfd, int mask) {
     event.data.fd = sfd;
     event.events = mask;
     if (epoll_ctl(epfd, EPOLL_CTL_ADD, sfd, & event) == -1) printError("epoll add");
-    db2("insert ", sfd);
+    db2("insert ", getFdMean(sfd));
     epollMask[sfd] = mask;
 }
 
 void delEpoll(int epfd, int sfd) {
     if (epoll_ctl(epfd, EPOLL_CTL_DEL, sfd, NULL) == -1) printError("epoll del");
-    db2("remove ", sfd);
+    db2("remove ", getFdMean(sfd));
     epollMask.erase(sfd);
 }
 
 void modEpoll(int epfd, int sfd, int what, int val) {
-    db(sfd);
+    if (!(epollMask.count(sfd) == 1)) {
+        db(sfd);
+        db2(what, val);
+    }
     assert(epollMask.count(sfd) == 1);
     int oldMask = epollMask[sfd];
     int mask = ((oldMask & what) ^ oldMask) | val;
     epoll_event event;
     event.events = mask;
     event.data.fd = sfd;
-    db2(epfd, sfd);
     if (epoll_ctl(epfd, EPOLL_CTL_MOD, sfd, &event) == -1) printError("epoll ctl");
     epollMask[sfd] = mask;
 }
@@ -105,8 +115,9 @@ vector < string > split(string s, char ch) {
 
 struct Task {
     int cnt, sfd, lfd, rfd; 
+    bool finished;
     shared_ptr < Buffer > rightBuf;
-    Task(int cnt, int sfd, int lfd, int rfd): cnt(cnt), sfd(sfd), lfd(lfd), rfd(rfd) { }
+    Task(int cnt, int sfd, int lfd, int rfd): cnt(cnt), sfd(sfd), lfd(lfd), rfd(rfd), finished(0) { }
 };
 
 
@@ -117,8 +128,19 @@ int superPipe[2];
 
 void sigHandler(int, siginfo_t *si, void *) {
     int pid = si->si_pid;
+    db(taskId.size());
+    for (auto x: taskId)
+        cerr << "(" << x.fr << ", " << x.sc << ")" << "   ";
+    cerr << endl;
+    db(pid);
+    int tid;
+    if (taskId.count(pid) == 0) {
+        assert(!task.empty());
+        tid = (int)task.size() - 1; 
+    }
+    else 
+        tid = taskId[pid];
     assert(taskId.count(pid) == 1);
-    int tid = taskId[pid];
     task[tid].cnt--;
     assert(task[tid].cnt >= 0);
     if (task[tid].cnt == 0) {
@@ -129,7 +151,51 @@ void sigHandler(int, siginfo_t *si, void *) {
 }
 
 
+void finishTask(int tid) {
+    if (task[tid].finished) return;
+    cerr << "sock: " << task[tid].sfd << " " << task[tid].lfd << " " << task[tid].rfd << endl;
+    int epfd = task[tid].rightBuf->epfd;
+    if (epollMask.count(task[tid].lfd) == 1) delEpoll(epfd, task[tid].lfd);
+    if (epollMask.count(task[tid].rfd) == 1) delEpoll(epfd, task[tid].rfd);
+    if (epollMask.count(task[tid].sfd) == 1) delEpoll(epfd, task[tid].sfd);
 
+    //delEpoll(epfd, task[tid].rfd);
+    //delEpoll(epfd, task[tid].sfd);
+    if (close(task[tid].lfd) == -1) printError("close"); 
+    if (close(task[tid].rfd) == -1) printError("close");
+    if (close(task[tid].sfd) == -1) printError("close");
+    task[tid].finished = 1;
+}
+
+
+bool checkEnd(int tid) {
+    bool flagOK = 1;
+    db(tid);
+    cerr << "checkEnd tid read write: " << tid << " " << task[tid].rightBuf->readFD << " " << task[tid].rightBuf->writeFD << endl;
+    if (task[tid].rightBuf->readFD != -1){
+        task[tid].rightBuf->bufRead();
+        flagOK &= (int)task[tid].rightBuf->deq.size() < task[tid].rightBuf->cap;
+    }
+    if (task[tid].rightBuf->writeFD != -1) {
+        task[tid].rightBuf->bufWrite();
+        flagOK &= (int)task[tid].rightBuf->deq.empty();
+    }
+    return flagOK;
+}
+
+void remFD(shared_ptr < Buffer > buf, int fd) {
+    if (buf->readFD == fd) {
+        buf->readFD = -1;
+        buf->inEpollR = 0;
+    }
+    if (buf->writeFD == fd) {
+        buf->writeFD = -1;
+        buf->inEpollW = 0; 
+    }
+}
+
+
+map < int, int > cntFail;
 
 int main(int argc, char * argv[]){
     //string s = "  grep 'model name'  ";
@@ -148,16 +214,23 @@ int main(int argc, char * argv[]){
     if (argc != 2) printError("Usage: ./netsh port");
     if (sscanf(argv[1], "%d", &port) != 1) printError("Usage: ./netsh port");
 
-    //createDemon();
-    //printPid(); 
+    createDemon();
+    printPid(); 
     int sfd = createSocket(port); 
     makeSocketNonBlocking(sfd);
     int epfd = epoll_create(1);
     if (epfd == -1) printError("epoll create");
+    fdMean[epfd] = "epoll fd";
+    fdMean[sfd] = "main socket";
 
     addEpoll(epfd, sfd, EPOLLIN); 
 
-    if (pipe(superPipe) == -1) printError("superPipe");
+    if (pipe2(superPipe, O_CLOEXEC) == -1) printError("superPipe");
+
+    fdMean[superPipe[0]] = "superPipe read";
+    fdMean[superPipe[1]] = "superPipe write";
+
+    db2(superPipe[0], superPipe[1]);
 
     addEpoll(epfd, superPipe[0], EPOLLIN);
 
@@ -166,55 +239,70 @@ int main(int argc, char * argv[]){
         db(iter);
         const int MAX_EVENTS = 1;
         epoll_event events[MAX_EVENTS];
+        db("before wait");
         int res = epoll_wait(epfd, events, MAX_EVENTS, -1);
-        db2("epoll : ", res);
+        //db("after wait");
+        //db2("epoll : ", res);
         if (res == -1) {
             if (errno == EINTR)  {
                 db("EINTR");
-            }
+                continue; }
             printError("epoll_wait");
         } 
 
         assert(res == 1);
         int fd = events[0].data.fd;
         int mask = events[0].events;
-        cerr << "mask: " << mask << "    "; db2(fd, sfd);
+        db2(mask, fdMean[fd]);
 
         if (fd == superPipe[0]) {
+            db("in superPipe");
             char buf[20];
             read(superPipe[0], buf, sizeof(buf));
             int tid = -1;
             if (sscanf(buf, "%d", &tid) != 1) printError("scanf tid");
+            assert(tid < (int)task.size());
             assert(task[tid].cnt == 0);
             db("CLOSE!!!");
-            task[tid].rightBuf->bufWrite();
-            assert(task[tid].rightBuf->deq.empty());
-            cerr << "sock: " << task[tid].sfd << " " << task[tid].lfd << " " << task[tid].rfd << endl;
-            int epfd = task[tid].rightBuf->epfd;
-            delEpoll(epfd, task[tid].lfd);
-            delEpoll(epfd, task[tid].rfd);
-            delEpoll(epfd, task[tid].sfd);
-            if (close(task[tid].lfd) == -1) printError("close"); 
-            if (close(task[tid].rfd) == -1) printError("close");
-            if (close(task[tid].sfd) == -1) printError("close");
-
+            if (checkEnd(tid))
+                finishTask(tid);
             continue;
         }
-            
-        if (mask & EPOLLHUP) {
-            mask ^= EPOLLHUP;
+
+        if ((mask & EPOLLERR) || (mask & EPOLLHUP)) {
+            cntFail[fd]++;
         }
-        db(mask);
+
+        if (mask & EPOLLERR) mask ^= EPOLLERR;
+            
+        //if (mask == EPOLLHUP) {
+        if (cntFail[fd] > 5) {
+            //db2("clean HUP ERR", (mask == EPOLLERR));
+            db2("\t\t\t\t\tso many fail", fd);
+            //continue;
+            delEpoll(epfd, fd);
+
+            if (q2.count(mp(fd, EPOLLIN)) == 1) remFD(q2[mp(fd, EPOLLIN)], fd);
+            if (q2.count(mp(fd, EPOLLOUT)) == 1) remFD(q2[mp(fd, EPOLLOUT)], fd);
+            //modEpoll(epfd, fd, EPOLLIN | EPOLLOUT, 0);
+            continue;
+        }
+
+        if (mask & EPOLLHUP) mask ^= EPOLLHUP;
+
         if (mask == 0) {
             continue;
         }
 
-        //assert(mask == EPOLLIN || mask == EPOLLOUT || mask == (EPOLLIN | EPOLLOUT));
+        db(mask);
+        assert(mask == EPOLLIN || mask == EPOLLOUT || mask == (EPOLLIN | EPOLLOUT));
         if (fd == sfd) {
             sockaddr_in client;
             socklen_t sz = sizeof(client);
             int nfd = accept(sfd, (sockaddr*)&client, &sz);
+            db2("-----from accept: ", nfd);
             makeSocketNonBlocking(nfd);
+            fdMean[nfd] = "child socket";
             
             //db("!!!!!!!!!!");
             //char tmp[100];
@@ -225,10 +313,9 @@ int main(int argc, char * argv[]){
             //exit(0);
 
             addEpoll(epfd, nfd, EPOLLIN);
-            db(nfd);
-            q1[nfd] = shared_ptr < Buffer > (new Buffer(CAP, nfd, -1, epfd));
+            //db(nfd);
+            q1[nfd] = shared_ptr < Buffer > (new Buffer(CAP, nfd, -1, epfd, -1));
         }
-
         else if (q1.count(fd) == 1) {
             auto bufLeft = q1[fd];
             bufLeft->bufRead();
@@ -260,11 +347,34 @@ int main(int argc, char * argv[]){
                     cerr << endl;
                 }
 
+                for (auto & cc: commands) {
+                    for (auto & x: cc) {
+                        //db(x);
+                        //db2((int)x[0], (int)'\'');
+                        if (x[0] == '\'') x.erase(x.begin());
+                        if (x.back() == '\'') x.pop_back();
+
+                        if (x[0] == '"') x.erase(x.begin());
+                        if (x.back() == '"') x.pop_back();
+
+                    }
+                }
+
+                cerr << "========\n";
+                for (auto cc: commands) {
+                    for (auto x: cc)
+                        cerr << x << "!!";
+                    cerr << endl;
+                }
+
                 for (int i = 0; i < k + 1; i++) {
                     int p[2];
-                    if (pipe(p) == -1) printError("pipe");
+                    if (pipe2(p, O_CLOEXEC) == -1) printError("pipe");
                     pipes.pb(mp(p[0], p[1]));
                 }
+                makeSocketNonBlocking(pipes[0].sc);
+                makeSocketNonBlocking(pipes[k].fr);
+
                 //cerr << "pipes:\n";
                 //for (auto x: pipes)
                     //db2(x.fr, x.sc);
@@ -280,10 +390,10 @@ int main(int argc, char * argv[]){
 
                         dup2(pipes[i].fr, STDIN_FILENO);
                         dup2(pipes[i + 1].sc, STDOUT_FILENO);
-                        for (auto pp: pipes) {
-                            if (close(pp.fr) == -1) printError("close in for 1");
-                            if (close(pp.sc) == -1) printError("close in for 2");
-                        }
+                        //for (auto pp: pipes) {
+                            //if (close(pp.fr) == -1) printError("close in for 1");
+                            //if (close(pp.sc) == -1) printError("close in for 2");
+                        //}
 
                         char ** tmp = new char * [commands[i].size() + 1];
                         for (int j = 0; j < (int)commands[i].size(); j++)    {
@@ -306,7 +416,7 @@ int main(int argc, char * argv[]){
                 //shared_ptr < Buffer > bufLeft(new Buffer(CAP, fd, pipes[0].sc, epfd));
                 bufLeft->writeFD = pipes[0].sc;
                 bufLeft->inEpollW = 1;
-                shared_ptr < Buffer > bufRight(new Buffer(CAP, pipes[k].fr, fd, epfd));
+                shared_ptr < Buffer > bufRight(new Buffer(CAP, pipes[k].fr, fd, epfd, tid));
                 
                 task.back().rightBuf = bufRight;  
                 
@@ -321,13 +431,14 @@ int main(int argc, char * argv[]){
                 for (int i = posBack; i < (int)s.size(); i++)
                     bufLeft->deq.pb(s[i]);
 
+                fdMean[pipes[0].sc] = "left pipe write";
+                fdMean[pipes[k].fr] = "right pipe read";
 
                 q2[mp(pipes[0].sc, EPOLLOUT)] = bufLeft;
                 q2[mp(fd, EPOLLIN)] = bufLeft;
                 q2[mp(fd, EPOLLOUT)] = bufRight;
                 q2[mp(pipes[k].fr, EPOLLIN)] = bufRight;
-                db2(epfd, pipes[0].sc);
-                db2(epfd, pipes[k].fr);
+                db2(pipes[k].fr, pipes[0].sc);
                 addEpoll(epfd, pipes[0].sc, EPOLLOUT);
                 addEpoll(epfd, pipes[k].fr, EPOLLIN);
                 
@@ -342,6 +453,11 @@ int main(int argc, char * argv[]){
                         shared_ptr < Buffer > buf = q2[mp(fd, mmask)]; 
                         if (mmask & EPOLLIN) buf->bufRead();  
                         if (mmask & EPOLLOUT) buf->bufWrite();
+
+                        if (buf->tid != -1 && task[buf->tid].cnt == 0) {
+                            if (checkEnd(buf->tid))
+                                finishTask(buf->tid);
+                        }
                     }
                 }
             }

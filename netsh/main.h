@@ -46,7 +46,7 @@ using namespace std;
 #define all(a) (a).begin(), (a).end()
 #define LISTEN_BACKLOG 50
 
-const int CAP = (1 << 10);
+const int CAP = 1 << 20;
 
 void printError(string s);
 
