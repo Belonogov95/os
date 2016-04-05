@@ -66,13 +66,13 @@ void addEpoll(int epfd, int sfd, int mask) {
     event.data.fd = sfd;
     event.events = mask;
     if (epoll_ctl(epfd, EPOLL_CTL_ADD, sfd, & event) == -1) printError("epoll add");
-    db2("insert ", getFdMean(sfd));
+    //db2("insert ", getFdMean(sfd));
     epollMask[sfd] = mask;
 }
 
 void delEpoll(int epfd, int sfd) {
     if (epoll_ctl(epfd, EPOLL_CTL_DEL, sfd, NULL) == -1) printError("epoll del");
-    db2("remove ", getFdMean(sfd));
+    //db2("remove ", getFdMean(sfd));
     epollMask.erase(sfd);
 }
 
@@ -140,20 +140,22 @@ void sigHandler(int, siginfo_t *si, void *) {
     }
     else 
         tid = taskId[pid];
-    assert(taskId.count(pid) == 1);
+    //assert(taskId.count(pid) == 1);
     task[tid].cnt--;
     assert(task[tid].cnt >= 0);
     if (task[tid].cnt == 0) {
         char s[20];
-        sprintf(s, "%d", tid);
-        write(superPipe[1], s, strlen(s));
+        assert(tid < (int)task.size());
+        sprintf(s, "%d ", tid);
+        int g = write(superPipe[1], s, strlen(s));
+        assert((int)strlen(s) == g);
     }
 }
 
 
 void finishTask(int tid) {
     if (task[tid].finished) return;
-    cerr << "sock: " << task[tid].sfd << " " << task[tid].lfd << " " << task[tid].rfd << endl;
+    //cerr << "sock: " << task[tid].sfd << " " << task[tid].lfd << " " << task[tid].rfd << endl;
     int epfd = task[tid].rightBuf->epfd;
     if (epollMask.count(task[tid].lfd) == 1) delEpoll(epfd, task[tid].lfd);
     if (epollMask.count(task[tid].rfd) == 1) delEpoll(epfd, task[tid].rfd);
@@ -171,7 +173,7 @@ void finishTask(int tid) {
 bool checkEnd(int tid) {
     bool flagOK = 1;
     db(tid);
-    cerr << "checkEnd tid read write: " << tid << " " << task[tid].rightBuf->readFD << " " << task[tid].rightBuf->writeFD << endl;
+    //cerr << "checkEnd tid read write: " << tid << " " << task[tid].rightBuf->readFD << " " << task[tid].rightBuf->writeFD << endl;
     if (task[tid].rightBuf->readFD != -1){
         task[tid].rightBuf->bufRead();
         flagOK &= (int)task[tid].rightBuf->deq.size() < task[tid].rightBuf->cap;
@@ -214,8 +216,8 @@ int main(int argc, char * argv[]){
     if (argc != 2) printError("Usage: ./netsh port");
     if (sscanf(argv[1], "%d", &port) != 1) printError("Usage: ./netsh port");
 
-    createDemon();
-    printPid(); 
+    //createDemon();
+    //printPid(); 
     int sfd = createSocket(port); 
     makeSocketNonBlocking(sfd);
     int epfd = epoll_create(1);
@@ -230,16 +232,16 @@ int main(int argc, char * argv[]){
     fdMean[superPipe[0]] = "superPipe read";
     fdMean[superPipe[1]] = "superPipe write";
 
-    db2(superPipe[0], superPipe[1]);
+    //db2(superPipe[0], superPipe[1]);
 
     addEpoll(epfd, superPipe[0], EPOLLIN);
 
     for (int iter = 0;; iter++) {
-        cerr << endl;
-        db(iter);
+        //cerr << endl;
+        //db(iter);
         const int MAX_EVENTS = 1;
         epoll_event events[MAX_EVENTS];
-        db("before wait");
+        //db("before wait");
         int res = epoll_wait(epfd, events, MAX_EVENTS, -1);
         //db("after wait");
         //db2("epoll : ", res);
@@ -253,17 +255,18 @@ int main(int argc, char * argv[]){
         assert(res == 1);
         int fd = events[0].data.fd;
         int mask = events[0].events;
-        db2(mask, fdMean[fd]);
+        //db2(mask, fdMean[fd]);
 
         if (fd == superPipe[0]) {
-            db("in superPipe");
+            //db("in superPipe");
             char buf[20];
             read(superPipe[0], buf, sizeof(buf));
             int tid = -1;
             if (sscanf(buf, "%d", &tid) != 1) printError("scanf tid");
+            db2(tid, task.size());
             assert(tid < (int)task.size());
             assert(task[tid].cnt == 0);
-            db("CLOSE!!!");
+            //db("CLOSE!!!");
             if (checkEnd(tid))
                 finishTask(tid);
             continue;
@@ -278,7 +281,7 @@ int main(int argc, char * argv[]){
         //if (mask == EPOLLHUP) {
         if (cntFail[fd] > 5) {
             //db2("clean HUP ERR", (mask == EPOLLERR));
-            db2("\t\t\t\t\tso many fail", fd);
+            //db2("\t\t\t\t\tso many fail", fd);
             //continue;
             delEpoll(epfd, fd);
 
@@ -300,7 +303,7 @@ int main(int argc, char * argv[]){
             sockaddr_in client;
             socklen_t sz = sizeof(client);
             int nfd = accept(sfd, (sockaddr*)&client, &sz);
-            db2("-----from accept: ", nfd);
+            //db2("-----from accept: ", nfd);
             makeSocketNonBlocking(nfd);
             fdMean[nfd] = "child socket";
             
@@ -328,7 +331,7 @@ int main(int argc, char * argv[]){
                 q1.erase(fd);
                 auto r1 = split(s, '\n');
                 vector < string > r2 = split(r1[0], '|');
-                db2(bufLeft->deq.size(), r1[0].size());
+                //db2(bufLeft->deq.size(), r1[0].size());
                 for (int i = 0; i < (int)r1[0].size() + 1; i++)
                     bufLeft->deq.pop_front();
 
@@ -340,12 +343,12 @@ int main(int argc, char * argv[]){
                 int k = commands.size();
                 assert(k >= 1);
 
-                cerr << "========\n";
-                for (auto cc: commands) {
-                    for (auto x: cc)
-                        cerr << x << "!!";
-                    cerr << endl;
-                }
+                //cerr << "========\n";
+                //for (auto cc: commands) {
+                    //for (auto x: cc)
+                        //cerr << x << "!!";
+                    //cerr << endl;
+                //}
 
                 for (auto & cc: commands) {
                     for (auto & x: cc) {
@@ -428,8 +431,8 @@ int main(int argc, char * argv[]){
                         break;
                     }
                 assert(posBack != -1);
-                for (int i = posBack; i < (int)s.size(); i++)
-                    bufLeft->deq.pb(s[i]);
+                //for (int i = posBack; i < (int)s.size(); i++)
+                    //bufLeft->deq.pb(s[i]);
 
                 fdMean[pipes[0].sc] = "left pipe write";
                 fdMean[pipes[k].fr] = "right pipe read";

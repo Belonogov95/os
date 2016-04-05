@@ -12,6 +12,10 @@ void Buffer::bufRead() {
         int mx = cap - deq.size();
         string s(mx, 0);
         int len = read(readFD, (void *)s.data(), mx);
+        cerr << "read:";
+        for (int i = 0; i < len; i++)
+            cerr << s[i];
+        cerr << ":\n";
         db2("read len: ", len);
         if (len == 0) {
             modEpoll(epfd, readFD, EPOLLIN, 0);
@@ -48,6 +52,7 @@ void Buffer::bufWrite() {
         string s(deq.begin(), deq.end());
         db(s.size());
         int len = write(writeFD, s.data(), s.size());
+        cerr << "write:" << s << ":" << endl;
         db2("write len: ", len);
         if (len == -1) printError("write");
         for (int i = 0; i < len; i++)
