@@ -216,8 +216,8 @@ int main(int argc, char * argv[]){
     if (argc != 2) printError("Usage: ./netsh port");
     if (sscanf(argv[1], "%d", &port) != 1) printError("Usage: ./netsh port");
 
-    //createDemon();
-    //printPid(); 
+    createDemon();
+    printPid(); 
     int sfd = createSocket(port); 
     makeSocketNonBlocking(sfd);
     int epfd = epoll_create(1);
