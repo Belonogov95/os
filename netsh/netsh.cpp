@@ -87,12 +87,17 @@ map < pair < int, int >, shared_ptr < Buffer > > q2;
 
 vector < string > split(string s, char ch) {
     vector < string > res;
+    int c1 = 0;
+    //int c2 = 0;
+
     for (int i = 0; i < (int)s.size();) {
         for (;i < (int)s.size() && s[i] == ch; i++);
         if (i == (int)s.size()) break;
 
         int j = i;
-        for (; i < (int)s.size() && s[i] != ch; i++);
+        for (; i < (int)s.size() && (s[i] != ch || c1 % 2 == 1); i++) {
+            c1 += s[i] == '\'';
+        }
         res.pb(s.substr(j, i - j));
     }
     return res;
@@ -127,6 +132,12 @@ void sigHandler(int, siginfo_t *si, void *) {
 
 
 int main(int argc, char * argv[]){
+    //string s = "  grep 'model name'  ";
+    //auto res = split(s, ' ');
+    //for (auto x: res)
+        //db(x);
+    //return 0;
+
     struct sigaction sa;
     sa.sa_flags = SA_SIGINFO;
     sigemptyset(&sa.sa_mask);
@@ -245,7 +256,7 @@ int main(int argc, char * argv[]){
                 cerr << "========\n";
                 for (auto cc: commands) {
                     for (auto x: cc)
-                        cerr << x << " ";
+                        cerr << x << "!!";
                     cerr << endl;
                 }
 
